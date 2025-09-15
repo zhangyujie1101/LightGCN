@@ -1,6 +1,5 @@
 import pandas as pd
 
-# 示例数据
 user_list = [1, 2, 3]
 item_list = [[10, 23, 45, 67], [12, 34], [45, 67, 89]]
 
