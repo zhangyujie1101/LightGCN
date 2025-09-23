@@ -375,7 +375,7 @@ if __name__ == '__main__':
 
     result = top_k_rs_result(20)
     pprint(result)
-</pre>>
+</pre>
 
 基于模型的 CF（如矩阵 factorization、LightGCN）：通过模型学习用户和项目的低维嵌入（Embedding），将交互预测转化为嵌入的相似度计算，更适合大规模场景 ——LightGCN 即属于此类，且是基于图卷积的进阶模型。
 
