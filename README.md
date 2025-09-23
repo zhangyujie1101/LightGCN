@@ -1,4 +1,4 @@
-#LightGCN复现实验
+LightGCN复现实验
 
 ---
 
