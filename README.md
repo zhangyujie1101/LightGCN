@@ -15,6 +15,16 @@
 
 基于ml-latest-small数据集实现User-Based CF算法
 
+ml-latest-small数据集介绍：
+
+ml-latest-small 是MovieLens其中的一个小规模版本，适合入门实验和快速原型开发。
+
+数据规模：用户数 610 物品数 9742 评分数 100836 提供了评分、标签和电影元信息等
+
+包含文件：ratings.csv movies.csv tags.csv links.csv
+
+rating.csv中的数据内容 userId、movieId、rating、timestamp
+
 <pre>
 import os
 
