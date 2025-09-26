@@ -37,8 +37,8 @@ CACHE_DIR = "./datasets/cache/"
 def load_data(data_path):
     """
     加载数据
-    :param data_path: 数据集路径
-    :return: 用户-物品评分矩阵
+    data_path: 数据集路径
+    return: 用户-物品评分矩阵
     """
     # 数据集缓存地址
     cache_path = os.path.join(CACHE_DIR, "ratings_matrix.cache")
@@ -52,7 +52,7 @@ def load_data(data_path):
         print("加载新数据中...")
         # 设置要加载的数据字段的类型
         dtype = {"userId": np.int32, "movieId": np.int32, "rating": np.float32}
-        # 加载数据，我们只用前三列数据，分别是用户ID，电影ID，已经用户对电影的对应评分
+        # 加载数据，只用前三列数据，分别是用户ID，电影ID，已经用户对电影的对应评分
         ratings = pd.read_csv(data_path, dtype=dtype, usecols=range(3))
         # 透视表，将电影ID转换为列名称，转换成为一个User-Movie的评分矩阵
         ratings_matrix = ratings.pivot_table(index=["userId"], columns=["movieId"], values="rating")
@@ -64,9 +64,9 @@ def load_data(data_path):
 def compute_pearson_similarity(ratings_matrix, based="user"):
     """
     计算皮尔逊相关系数
-    :param ratings_matrix: 用户-物品评分矩阵
-    :param based: "user" or "item"
-    :return: 相似度矩阵
+    ratings_matrix: 用户-物品评分矩阵
+    based: "user" or "item"
+    return: 相似度矩阵
     """
     user_similarity_cache_path = os.path.join(CACHE_DIR, "user_similarity.cache")
     item_similarity_cache_path = os.path.join(CACHE_DIR, "item_similarity.cache")
@@ -97,11 +97,11 @@ def compute_pearson_similarity(ratings_matrix, based="user"):
 def predict(uid, iid, ratings_matrix, user_similar):
     """
     预测给定用户对给定物品的评分值
-    :param uid: 用户ID
-    :param iid: 物品ID
-    :param ratings_matrix: 用户-物品评分矩阵
-    :param user_similar: 用户两两相似度矩阵
-    :return: 预测的评分值
+    uid: 用户ID
+    iid: 物品ID
+    ratings_matrix: 用户-物品评分矩阵
+    user_similar: 用户两两相似度矩阵
+    return: 预测的评分值
     """
     print("开始预测用户<%d>对电影<%d>的评分..."%(uid, iid))
     # 1. 找出uid用户的相似用户
@@ -136,11 +136,11 @@ def predict(uid, iid, ratings_matrix, user_similar):
 def _predict_all(uid, item_ids, ratings_matrix, user_similar):
     """
     预测全部评分
-    :param uid: 用户id
-    :param item_ids: 要预测的物品id列表
-    :param ratings_matrix: 用户-物品打分矩阵
-    :param user_similar: 用户两两间的相似度
-    :return: 生成器，逐个返回预测评分
+    uid: 用户id
+    item_ids: 要预测的物品id列表
+    ratings_matrix: 用户-物品打分矩阵
+    user_similar: 用户两两间的相似度
+    return: 生成器，逐个返回预测评分
     """
     # 逐个预测
     for iid in item_ids:
@@ -154,11 +154,11 @@ def _predict_all(uid, item_ids, ratings_matrix, user_similar):
 def predict_all(uid, ratings_matrix, user_similar, filter_rule=None):
     """
     预测全部评分，并可根据条件进行前置过滤
-    :param uid: 用户ID
-    :param ratings_matrix: 用户-物品打分矩阵
-    :param user_similar: 用户两两间的相似度
-    :param filter_rule: 过滤规则，只能是四选一，否则将抛异常："unhot","rated",["unhot","rated"],None
-    :return: 生成器，逐个返回预测评分
+    uid: 用户ID
+    ratings_matrix: 用户-物品打分矩阵
+    user_similar: 用户两两间的相似度
+    filter_rule: 过滤规则，只能是四选一，否则将抛异常："unhot","rated",["unhot","rated"],None
+    return: 生成器，逐个返回预测评分
     """
 
     if not filter_rule:
@@ -219,8 +219,8 @@ CACHE_DIR = "./datasets/cache/"
 def load_data(data_path):
     """
     加载数据
-    :param data_path: 数据集路径
-    :return: 用户-物品评分矩阵
+    data_path: 数据集路径
+    return: 用户-物品评分矩阵
     """
     # 数据集缓存地址
     cache_path = os.path.join(CACHE_DIR, "ratings_matrix.cache")
@@ -246,9 +246,9 @@ def load_data(data_path):
 def compute_pearson_similarity(ratings_matrix, based="user"):
     """
     计算皮尔逊相关系数
-    :param ratings_matrix: 用户-物品评分矩阵
-    :param based: "user" or "item"
-    :return: 相似度矩阵
+    ratings_matrix: 用户-物品评分矩阵
+    based: "user" or "item"
+    return: 相似度矩阵
     """
     user_similarity_cache_path = os.path.join(CACHE_DIR, "user_similarity.cache")
     item_similarity_cache_path = os.path.join(CACHE_DIR, "item_similarity.cache")
@@ -279,11 +279,11 @@ def compute_pearson_similarity(ratings_matrix, based="user"):
 def predict(uid, iid, ratings_matrix, item_similar):
     """
     预测给定用户对给定物品的评分值
-    :param uid: 用户ID
-    :param iid: 物品ID
-    :param ratings_matrix: 用户-物品评分矩阵
-    :param item_similar: 物品两两相似度矩阵
-    :return: 预测的评分值
+    uid: 用户ID
+    iid: 物品ID
+    ratings_matrix: 用户-物品评分矩阵
+    item_similar: 物品两两相似度矩阵
+    return: 预测的评分值
     """
     print("开始预测用户<%d>对电影<%d>的评分..."%(uid, iid))
     # 1. 找出iid物品的相似物品
@@ -318,11 +318,11 @@ def predict(uid, iid, ratings_matrix, item_similar):
 def _predict_all(uid, item_ids, ratings_matrix, user_similar):
     """
     预测全部评分
-    :param uid: 用户id
-    :param item_ids: 要预测的物品id列表
-    :param ratings_matrix: 用户-物品打分矩阵
-    :param user_similar: 用户两两间的相似度
-    :return: 生成器，逐个返回预测评分
+    uid: 用户id
+    item_ids: 要预测的物品id列表
+    ratings_matrix: 用户-物品打分矩阵
+    user_similar: 用户两两间的相似度
+    return: 生成器，逐个返回预测评分
     """
     # 逐个预测
     for iid in item_ids:
@@ -336,11 +336,11 @@ def _predict_all(uid, item_ids, ratings_matrix, user_similar):
 def predict_all(uid, ratings_matrix, user_similar, filter_rule=None):
     """
     预测全部评分，并可根据条件进行前置过滤
-    :param uid: 用户ID
-    :param ratings_matrix: 用户-物品打分矩阵
-    :param user_similar: 用户两两间的相似度
-    :param filter_rule: 过滤规则，只能是四选一，否则将抛异常："unhot","rated",["unhot","rated"],None
-    :return: 生成器，逐个返回预测评分
+    uid: 用户ID
+    ratings_matrix: 用户-物品打分矩阵
+    user_similar: 用户两两间的相似度
+    filter_rule: 过滤规则，只能是四选一，否则将抛异常："unhot","rated",["unhot","rated"],None
+    return: 生成器，逐个返回预测评分
     """
 
     if not filter_rule:
