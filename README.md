@@ -535,6 +535,6 @@ Embedding维度=128
 
 ---
 
-## 3. 可视化损失以及学习使用PyTorch的nn.Module类和PyG中的torch_geometric.nn.conv.GCNConv实现一个简单的卷积网络完成推荐任务
+## 3. 学习使用PyTorch的nn.Module类和PyG中的torch_geometric.nn.conv.GCNConv实现一个简单的卷积网络完成推荐任务
 
 可视化对比LGN与这个模型之间的损失，指标变化，横坐标为迭代次数。主要流程参考代码-PyG中的流程。
