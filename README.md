@@ -588,11 +588,9 @@ self.conv2 = GCNConv(hidden_dim, embedding_dim)
 
 ### 3.3 训练：采样/损失/流程解释
 
-**训练逻辑**：
+**Batch 正样本**：<code>train_loader</code>是<code>range(train_edge_label_index.size(1))</code>的 DataLoader，即按正边的列索引做 mini-batch（每个 batch 取若干条正交互）。
 
-Batch 正样本：<code>train_loader</code>是<code>range(train_edge_label_index.size(1))</code>的 DataLoader，即按正边的列索引做 mini-batch（每个 batch 取若干条正交互）。
-
-负采样：
+**负采样**：
 
 <pre>
 neg_edge_label_index = torch.stack([
@@ -603,6 +601,36 @@ neg_edge_label_index = torch.stack([
 
 - 对每个正样本 (user, pos_book) 随机采一个负样本 (same user, random_book)；这是典型的 BPR 风格负采样。优点简单高效；缺点可能采到与正例相同的 item 或采到“太容易”的负样本。
 
-打分：把所有节点 embedding（通过<code>model.get_embedding(edge_index)</code>）取出，然后用内积（元素乘后求和）作为 score：
+**打分**：把所有节点 embedding（通过<code>model.get_embedding(edge_index)</code>）取出，然后用内积（元素乘后求和）作为 score：
 
 <pre>(emb[edge_label_index[0]] * emb[edge_label_index[1]]).sum(dim=-1)</pre>
+
+这是最常用的矩阵分解式评分方法（embedding 的点积）。
+
+**损失**：BPR 损失
+
+<pre>-mean( log( sigmoid( s_pos - s_neg ) ) )</pre>
+
+- 使得正样本得分高于负样本，且 margin 越大越好；用 log-sigmoid 可以稳定训练。
+
+训练中注意事项：
+
+- 每个 batch 都计算一次<code>emb = model.get_embedding(edge_index)</code>，即完整传播并得到节点 embedding，然后基于该 embedding 计算 loss 并做一次反向更新。
+- <code>total_loss</code>的累计是以样本数加权的均值计算，最后返回 epoch 平均 loss。
+
+### 3.4 评估——Precision@K / Recall@K 的计算 
+
+**分离 user_emb / book_emb**：
+
+<pre>user_emb, book_emb = emb[:num_users], emb[num_users:]</pre>
+
+**逐批用户计算**：为了不一次性构建<code>num_users x num_books</code>的超大矩阵，按<code>batch_size</code>切分用户（每次构建<code>batch_user x num_books</code>矩阵），节省内存。
+
+**屏蔽（mask）训练边**：把训练集中已经存在的 user-item 对在 logits 中设为<code>-inf</code>，避免它们出现在 top-k 中（评价时只看未见过的推荐）。
+
+**ground-truth**：构建<code>ground_truth</code>矩阵（batch_size x num_books）表示该用户实际在数据中交互过哪些书（用于判断 top-k 是否命中）。
+
+**计算指标**：
+
+- Precision@K = 平均每个用户 top-K 命中数 / K。
+- Recall@K = 平均每个用户 top-K 命中数 / 用户真实交互数（用<code>degree</code>计算该用户实际交互数）。
