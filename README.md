@@ -603,4 +603,6 @@ neg_edge_label_index = torch.stack([
 
 - 对每个正样本 (user, pos_book) 随机采一个负样本 (same user, random_book)；这是典型的 BPR 风格负采样。优点简单高效；缺点可能采到与正例相同的 item 或采到“太容易”的负样本。
 
-打分：把所有节点 embedding（通过 model.get_embedding(edge_index)）取出，然后用内积（元素乘后求和）作为 score：
+打分：把所有节点 embedding（通过<code>model.get_embedding(edge_index)</code>）取出，然后用内积（元素乘后求和）作为 score：
+
+<pre>(emb[edge_label_index[0]] * emb[edge_label_index[1]]).sum(dim=-1)</pre>
