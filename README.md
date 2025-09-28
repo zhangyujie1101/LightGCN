@@ -542,3 +542,65 @@ BPR 损失的设计完全围绕"排序"展开：其目标是让用户已交互�
 ## 3. 学习使用 PyTorch 的 nn.Module 类和 PyG 中的 torch_geometric.nn.conv.GCNConv 实现一个简单的卷积网络完成推荐任务
 
 可视化对比 LightGCN 与这个模型之间的损失、指标变化，横坐标为迭代次数。主要流程参考代码 - PyG 中的流程。
+
+### 3.1 数据与图构建
+
+**关键代码片段：**
+
+<pre>
+dataset = AmazonBook(path)
+data = dataset[0]
+num_users, num_books = data['user'].num_nodes, data['book'].num_nodes
+data = data.to_homogeneous().to(device)
+</pre>
+
+- 原始<code>AmazonBook</code>是异构二分图（user / book）。<code>num_users</code>和<code>num_books</code>在转换前先取出，这是必须的，因为<code>to_homogeneous()</code>会合并 node types 并重新编号节点，用户节点会变成<code>[0, num_users-1]</code>，book 节点从<code>num_users</code>开始。
+- <code>to_homogeneous()</code>：把二分图转成单一节点空间。之后，代码里所有基于<code>num_users</code>的切片都依赖这个编号约定。
+
+**筛选正样本：**
+
+<pre>
+mask = data.edge_index[0] < data.edge_index[1]
+train_edge_label_index = data.edge_index[:, mask]
+</pre>
+
+- 在二分图且用户 id 比书 id 小的约定下，选出 user→book 方向的边作为正样本（避免重复计入逆向边）。
+
+### 3.2 模型设计
+
+**GCNRecommender：**
+
+<pre>
+self.embedding = nn.Embedding(num_nodes, embedding_dim)
+self.conv1 = GCNConv(embedding_dim, hidden_dim)
+self.conv2 = GCNConv(hidden_dim, embedding_dim)
+</pre>
+
+- 把每个节点（user+book）初始化为可学习的 embedding（<code>nn.Embedding</code>），再用两层<code>GCNConv</code>做图卷积传播 —— 每一层会做线性变换 + 聚合 + 非线性
+- 这样模型不仅聚合邻居信息，还会对信息做仿射变换（有权重矩阵），以及非线性变换。
+
+**LightGCN：**
+
+调用<code>torch_geometric.nn.LightGCN</code>
+
+- LightGCN 的核心是只保留邻居信息传播，去掉特征变换（W 矩阵）和非线性（ReLU），并通过对各层聚合结果做加权求和/平均来得到最终 embedding。它强调“只传播协同信号”，因此在推荐场景通常比带变换的 GCN 更有效。
+- 通过<code>LightGCN(num_nodes=..., embedding_dim=64, num_layers=2)</code>来替换<code>GCNRecommender</code>，并复用相同训练/评估流程。
+
+### 3.3 训练：采样/损失/流程解释
+
+**训练逻辑**：
+
+Batch 正样本：<code>train_loader</code>是<code>range(train_edge_label_index.size(1))</code>的 DataLoader，即按正边的列索引做 mini-batch（每个 batch 取若干条正交互）。
+
+负采样：
+
+<pre>
+neg_edge_label_index = torch.stack([
+    pos_edge_label_index[0],
+    torch.randint(num_users, num_users + num_books, (index.numel(), ), device=device)
+], dim=0)
+</pre>
+
+- 对每个正样本 (user, pos_book) 随机采一个负样本 (same user, random_book)；这是典型的 BPR 风格负采样。优点简单高效；缺点可能采到与正例相同的 item 或采到“太容易”的负样本。
+
+打分：把所有节点 embedding（通过 model.get_embedding(edge_index)）取出，然后用内积（元素乘后求和）作为 score：
