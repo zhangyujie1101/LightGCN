@@ -634,3 +634,48 @@ neg_edge_label_index = torch.stack([
 
 - Precision@K = 平均每个用户 top-K 命中数 / K。
 - Recall@K = 平均每个用户 top-K 命中数 / 用户真实交互数（用<code>degree</code>计算该用户实际交互数）。
+
+### 3.5 实验结果
+
+![lgn_vs_gcn](./image/lgn_vs_gcn.png)
+
+## 4.数据集换成Movielens，同时训练集：验证集：测试集为8:1:1，可视化训练效果。
+
+### 4.1 Movielens数据集介绍
+
+#### 4.1.1 概述
+
+MovieLens是一个推荐系统和虚拟社区网站，它由美国 Minnesota 大学计算机科学与工程学院的GroupLens项目组创办，是一个非商业性质的、以研究为目的的实验性站点。GroupLens研究组根据MovieLens网站提供的数据制作了MovieLens数据集，这个数据集合里面包含了多个电影评分数据集，分别具有不同的用途。本文均用MovieLens数据集来代替整个集合。MoveieLens数据集可以说是推荐系统领域最为经典的数据集之一。
+
+#### 4.1.2 MovieLens
+
+MoveLens是一个数据集合，其中根据创建时间、数据集大小等分为了若干个子数据集。每个数据集的格式、大小、用途均有所差异。以MovieLens 1M Dataset为例，具体介绍下此数据集，其它MovieLens数据集也大都类似。
+
+**数据集概览**
+
+ml-1m.zip文件解压之后，可以得到4个文件，分别是：
+
+- movies.dat
+- ratings.dat
+- user.dat
+- README
+
+1M数据集有rating.dat、movies.dat、users.data三份数据集。ratings是6040位用户对3900部电影的评分数据（共计1000209）。
+
+**ratings.dat数据文件**
+
+rating.dat文件存放的是用户对电影的评分信息，该文件中每条记录形式：
+
+<pre>UserID::MovieID::Rating::Timestamp</pre>即用户id、电影id、该用户对此电影的评分、时间戳。
+
+**users.dat数据文件**
+
+users.dat文件存放的是用户的相关信息，包括性别、年龄、职业，该文件中每条记录形式：
+
+<pre>UserID::Gender::Age::Occupation::Zip-code</pre>即用户id、性别、年龄、职业、邮政编码。
+
+**movies.dat数据文件**
+
+movies.dat文件存放的是电影的相关信息，该文件中每条记录形式：
+
+<pre>MovieID::Title::Genres </pre>即电影id、电影标题、电影类型。
