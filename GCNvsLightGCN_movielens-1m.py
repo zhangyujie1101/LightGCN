@@ -1,22 +1,22 @@
-# ===================== 导入库 =====================
 import os.path as osp
 import torch
-import pandas as pd
+import torch.nn as nn
+import torch.nn.functional as F
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split
 
-# 导入PyG库
 from torch_geometric.data import Data
-from torch_geometric.nn import LightGCN
+from torch_geometric.nn import LightGCN, GCNConv
+from torch_geometric.utils import degree
 
-import matplotlib.pyplot as plt
-
-# ===================== 设置设备 =====================
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 # ===================== 加载MovieLens-1M数据集 =====================
-def load_data(data_path):
+def load_movielens_1m(data_path):
     """
     加载MovieLens-1M数据集并转换为PyG图数据格式
     """
@@ -57,13 +57,13 @@ def load_data(data_path):
 
 
 # 加载数据
-data_path = './datasets/ml-1m/'
-ratings, num_users, num_movies = load_data(data_path)
+data_path = 'path/to/your/movielens-1m'  # 请修改为你的MovieLens-1M数据路径
+ratings, num_users, num_movies = load_movielens_1m(data_path)
 
 # ===================== 数据划分 (8:1:1) =====================
-# 划分训练集和临时测试集 (8:2)
+# 首先划分训练集和临时测试集 (8:2)
 train_df, temp_df = train_test_split(ratings, test_size=0.2, random_state=42)
-# 将临时测试集划分为验证集和测试集 (1:1)
+# 然后将临时测试集划分为验证集和测试集 (1:1)
 val_df, test_df = train_test_split(temp_df, test_size=0.5, random_state=42)
 
 print(f"训练集: {len(train_df)} 条评分")
@@ -107,13 +107,6 @@ data = Data(
 data.val_edge_label_index = val_edge_label_index.to(device)
 data.test_edge_label_index = test_edge_label_index.to(device)
 
-# ===================== 初始化列表 =====================
-train_losses = []
-val_precisions = []
-val_recalls = []
-test_precisions = []
-test_recalls = []
-
 # ===================== 准备训练数据 =====================
 batch_size = 8192
 # 使用所有训练边作为正样本，但要去重（因为构建了双向边）
@@ -125,43 +118,46 @@ train_loader = torch.utils.data.DataLoader(
     batch_size=batch_size,
 )
 
-# ===================== 初始化模型和优化器 =====================
-model = LightGCN(
-    num_nodes=data.num_nodes,
-    embedding_dim=64,
-    num_layers=2,
-).to(device)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+# ===================== 基于GCN的推荐模型 =====================
+class GCNRecommender(nn.Module):
+    def __init__(self, num_nodes, embedding_dim=64, hidden_dim=64):
+        super().__init__()
+        self.embedding = nn.Embedding(num_nodes, embedding_dim)
+        self.conv1 = GCNConv(embedding_dim, hidden_dim)
+        self.conv2 = GCNConv(hidden_dim, embedding_dim)
+
+    def forward(self, edge_index):
+        x = self.embedding.weight
+        x = F.relu(self.conv1(x, edge_index))
+        x = self.conv2(x, edge_index)
+        return x
+
+    def get_embedding(self, edge_index):
+        return self.forward(edge_index)
+
+    def recommendation_loss(self, pos_score, neg_score):
+        return -torch.log(torch.sigmoid(pos_score - neg_score) + 1e-15).mean()
 
 
-# ===================== 训练函数 =====================
-def train():
+# ===================== 公共训练与测试函数 =====================
+def train_one_epoch(model, optimizer, train_loader, edge_index, train_edge_label_index, num_users, num_movies):
     total_loss = total_examples = 0
+    model.train()
 
-    for index in tqdm(train_loader):
-        # 采样正样本边
+    for index in tqdm(train_loader, leave=False):
         pos_edge_label_index = train_edge_label_index[:, index]
-
-        # 生成负样本边
         neg_edge_label_index = torch.stack([
             pos_edge_label_index[0],
             torch.randint(num_users, num_users + num_movies,
                           (index.numel(),), device=device)
         ], dim=0)
-
-        edge_label_index = torch.cat([
-            pos_edge_label_index,
-            neg_edge_label_index,
-        ], dim=1)
+        edge_label_index = torch.cat([pos_edge_label_index, neg_edge_label_index], dim=1)
 
         optimizer.zero_grad()
-        pos_rank, neg_rank = model(data.edge_index, edge_label_index).chunk(2)
-        loss = model.recommendation_loss(
-            pos_rank,
-            neg_rank,
-            node_id=edge_label_index.unique(),
-        )
+        emb = model.get_embedding(edge_index)
+        pos_rank, neg_rank = (emb[edge_label_index[0]] * emb[edge_label_index[1]]).sum(dim=-1).chunk(2)
+        loss = model.recommendation_loss(pos_rank, neg_rank)
         loss.backward()
         optimizer.step()
 
@@ -171,19 +167,17 @@ def train():
     return total_loss / total_examples
 
 
-# ===================== 测试函数 =====================
 @torch.no_grad()
-def test(edge_label_index, k: int):
-    """
-    通用的测试函数，可以用于验证集和测试集
-    """
-    emb = model.get_embedding(data.edge_index)
+def test(model, edge_index, test_edge_label_index, train_edge_label_index, num_users, num_movies, batch_size,
+         k: int = 20):
+    model.eval()
+    emb = model.get_embedding(edge_index)
     user_emb, movie_emb = emb[:num_users], emb[num_users:num_users + num_movies]
 
     precision = recall = total_examples = 0
 
-    # 获取当前测试集中的所有用户
-    test_users = edge_label_index[0, edge_label_index[0] < num_users].unique()
+    # 获取测试集中的所有用户
+    test_users = test_edge_label_index[0, test_edge_label_index[0] < num_users].unique()
 
     for start in range(0, len(test_users), batch_size):
         end = min(start + batch_size, len(test_users))
@@ -204,8 +198,8 @@ def test(edge_label_index, k: int):
         ground_truth = torch.zeros((len(user_batch), num_movies), dtype=torch.bool, device=device)
         for i, user in enumerate(user_batch):
             # 找到该用户在测试集中的所有交互
-            mask = (edge_label_index[0] == user) & (edge_label_index[1] >= num_users)
-            test_movies = edge_label_index[1, mask] - num_users
+            mask = (test_edge_label_index[0] == user) & (test_edge_label_index[1] >= num_users)
+            test_movies = test_edge_label_index[1, mask] - num_users
             if len(test_movies) > 0:
                 ground_truth[i, test_movies] = True
 
@@ -224,35 +218,61 @@ def test(edge_label_index, k: int):
     return precision / total_examples, recall / total_examples
 
 
-# ===================== 训练循环 =====================
-for epoch in range(1, 101):
-    loss = train()
-
-    # 在验证集上测试
-    val_precision, val_recall = test(data.val_edge_label_index, k=20)
-    # 在测试集上测试（可选，通常只在最后测试）
-    if epoch % 10 == 0:  # 每10个epoch在测试集上测试一次
-        test_precision, test_recall = test(data.test_edge_label_index, k=20)
-        test_precisions.append(test_precision)
-        test_recalls.append(test_recall)
+# ===================== 训练 LightGCN 和 GCN 对比 =====================
+def run_experiment(model_class, name, epochs=100, lr=0.001):
+    if name == "LightGCN":
+        model = LightGCN(num_nodes=data.num_nodes, embedding_dim=64, num_layers=2).to(device)
     else:
-        test_precision, test_recall = 0, 0
+        model = GCNRecommender(num_nodes=data.num_nodes, embedding_dim=64).to(device)
 
-    # 记录指标
-    train_losses.append(loss)
-    val_precisions.append(val_precision)
-    val_recalls.append(val_recall)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    train_losses, val_precisions, val_recalls = [], [], []
+    test_precisions, test_recalls = [], []
 
-    print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, '
-          f'Val Precision@20: {val_precision:.4f}, Val Recall@20: {val_recall:.4f}'
-          f'{f", Test Precision@20: {test_precision:.4f}, Test Recall@20: {test_recall:.4f}" if epoch % 10 == 0 else ""}')
+    for epoch in range(1, epochs + 1):
+        # 训练
+        loss = train_one_epoch(model, optimizer, train_loader, data.edge_index,
+                               train_edge_label_index, num_users, num_movies)
 
-# ===================== 绘图 =====================
-plt.figure(figsize=(15, 4))
+        # 在验证集上测试
+        val_precision, val_recall = test(model, data.edge_index, data.val_edge_label_index,
+                                         train_edge_label_index, num_users, num_movies, batch_size, k=20)
+
+        # 在测试集上测试（每10个epoch测试一次）
+        if epoch % 10 == 0:
+            test_precision, test_recall = test(model, data.edge_index, data.test_edge_label_index,
+                                               train_edge_label_index, num_users, num_movies, batch_size, k=20)
+            test_precisions.append(test_precision)
+            test_recalls.append(test_recall)
+        else:
+            test_precision, test_recall = 0, 0
+
+        train_losses.append(loss)
+        val_precisions.append(val_precision)
+        val_recalls.append(val_recall)
+
+        print(f"[{name}] Epoch {epoch:03d} | Loss: {loss:.4f} | "
+              f"Val P@20: {val_precision:.4f} | Val R@20: {val_recall:.4f}"
+              f"{f' | Test P@20: {test_precision:.4f} | Test R@20: {test_recall:.4f}' if epoch % 10 == 0 else ''}")
+
+    return train_losses, val_precisions, val_recalls, test_precisions, test_recalls
+
+
+# ===================== 主流程 =====================
+epochs = 100
+print("开始训练 LightGCN...")
+lgn_loss, lgn_val_p, lgn_val_r, lgn_test_p, lgn_test_r = run_experiment(LightGCN, "LightGCN", epochs=epochs)
+
+print("\n开始训练 GCN...")
+gcn_loss, gcn_val_p, gcn_val_r, gcn_test_p, gcn_test_r = run_experiment(GCNRecommender, "GCN", epochs=epochs)
+
+# ===================== 可视化对比 =====================
+plt.figure(figsize=(18, 5))
 
 # 训练损失
 plt.subplot(1, 4, 1)
-plt.plot(train_losses, label='Train Loss')
+plt.plot(lgn_loss, label='LightGCN')
+plt.plot(gcn_loss, label='GCN')
 plt.xlabel('Epoch')
 plt.ylabel('Loss')
 plt.title('Training Loss')
@@ -260,30 +280,39 @@ plt.legend()
 
 # 验证集 Precision@20
 plt.subplot(1, 4, 2)
-plt.plot(val_precisions, label='Val Precision@20', color='orange')
+plt.plot(lgn_val_p, label='LightGCN', color='blue')
+plt.plot(gcn_val_p, label='GCN', color='red')
 plt.xlabel('Epoch')
-plt.ylabel('Precision')
+plt.ylabel('Precision@20')
 plt.title('Validation Precision@20')
 plt.legend()
 
 # 验证集 Recall@20
 plt.subplot(1, 4, 3)
-plt.plot(val_recalls, label='Val Recall@20', color='green')
+plt.plot(lgn_val_r, label='LightGCN', color='blue')
+plt.plot(gcn_val_r, label='GCN', color='red')
 plt.xlabel('Epoch')
-plt.ylabel('Recall')
+plt.ylabel('Recall@20')
 plt.title('Validation Recall@20')
 plt.legend()
 
 # 测试集指标（稀疏点）
 plt.subplot(1, 4, 4)
-test_epochs = list(range(10, 101, 10))
-plt.plot(test_epochs, test_precisions, 'o-', label='Test Precision@20', color='red')
-plt.plot(test_epochs, test_recalls, 's-', label='Test Recall@20', color='purple')
+test_epochs = list(range(10, epochs + 1, 10))
+plt.plot(test_epochs, lgn_test_p, 'o-', label='LightGCN Precision@20', color='blue')
+plt.plot(test_epochs, lgn_test_r, 's-', label='LightGCN Recall@20', color='lightblue')
+plt.plot(test_epochs, gcn_test_p, 'o-', label='GCN Precision@20', color='red')
+plt.plot(test_epochs, gcn_test_r, 's-', label='GCN Recall@20', color='pink')
 plt.xlabel('Epoch')
 plt.ylabel('Score')
-plt.title('Test Metrics')
+plt.title('Test Metrics (every 10 epochs)')
 plt.legend()
 
 plt.tight_layout()
-plt.savefig("movielens_training_metrics.png", dpi=300, bbox_inches='tight')
-plt.close()
+plt.savefig("movielens_lgn_vs_gcn.png", dpi=300, bbox_inches='tight')
+plt.show()
+
+# 打印最终测试结果
+print("\n=== 最终测试结果 ===")
+print(f"LightGCN - 最终测试 Precision@20: {lgn_test_p[-1]:.4f}, Recall@20: {lgn_test_r[-1]:.4f}")
+print(f"GCN - 最终测试 Precision@20: {gcn_test_p[-1]:.4f}, Recall@20: {gcn_test_r[-1]:.4f}")
