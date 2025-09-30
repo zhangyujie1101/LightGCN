@@ -57,7 +57,7 @@ def load_movielens_1m(data_path):
 
 
 # 加载数据
-data_path = 'path/to/your/movielens-1m'  # 请修改为你的MovieLens-1M数据路径
+data_path = './datasets/ml-1m/'  # 请修改为你的MovieLens-1M数据路径
 ratings, num_users, num_movies = load_movielens_1m(data_path)
 
 # ===================== 数据划分 (8:1:1) =====================

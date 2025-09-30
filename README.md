@@ -635,9 +635,11 @@ neg_edge_label_index = torch.stack([
 - Precision@K = 平均每个用户 top-K 命中数 / K。
 - Recall@K = 平均每个用户 top-K 命中数 / 用户真实交互数（用<code>degree</code>计算该用户实际交互数）。
 
-### 3.5 实验结果
+### 3.5 训练结果
 
 ![lgn_vs_gcn](./image/lgn_vs_gcn.png)
+
+GCN有点过拟合
 
 ## 4.数据集换成Movielens，同时训练集：验证集：测试集为8:1:1，可视化训练效果。
 
@@ -679,3 +681,11 @@ users.dat文件存放的是用户的相关信息，包括性别、年龄、职�
 movies.dat文件存放的是电影的相关信息，该文件中每条记录形式：
 
 <pre>MovieID::Title::Genres </pre>即电影id、电影标题、电影类型。
+
+### 4.2 lightgcn修改数据集时的注意点
+
+
+
+### 4.3 对lightgcn修改数据集后的的训练结果
+
+![lightgcn_movielens-1m](./image/lightgcn_movielens-1m.png)
