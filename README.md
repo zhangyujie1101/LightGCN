@@ -727,7 +727,7 @@ def load_data(data_path):
     return ratings, num_users, num_movies
 </pre>
 
-- 先对读出数据集的信息，主要是读取评分数据
+- 先对读出数据集的信息，主要是读取评分数据，
 
 ### 4.3 对lightgcn修改数据集后的的训练结果
 
