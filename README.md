@@ -684,7 +684,50 @@ movies.dat文件存放的是电影的相关信息，该文件中每条记录形�
 
 ### 4.2 lightgcn修改数据集时的注意点
 
+#### 4.2.1 加载MovieLens-1M数据集
 
+<pre>
+def load_data(data_path):
+    """
+    加载MovieLens-1M数据集并转换为PyG图数据格式
+    """
+    # 读取评分数据
+    ratings = pd.read_csv(osp.join(data_path, 'ratings.dat'),
+                          sep='::',
+                          engine='python',
+                          names=['user_id', 'movie_id', 'rating', 'timestamp'])
+
+    # 读取电影数据
+    movies = pd.read_csv(osp.join(data_path, 'movies.dat'),
+                         sep='::',
+                         engine='python',
+                         names=['movie_id', 'title', 'genres'],
+                         encoding='latin-1')
+
+    # 读取用户数据
+    users = pd.read_csv(osp.join(data_path, 'users.dat'),
+                        sep='::',
+                        engine='python',
+                        names=['user_id', 'gender', 'age', 'occupation', 'zipcode'])
+
+    print(f"数据集统计: {len(ratings)} 条评分, {len(users)} 个用户, {len(movies)} 部电影")
+
+    # 重新映射用户和电影ID为连续整数
+    user_mapping = {orig: new for new, orig in enumerate(ratings['user_id'].unique())}
+    movie_mapping = {orig: new for new, orig in enumerate(ratings['movie_id'].unique())}
+
+    ratings['user_idx'] = ratings['user_id'].map(user_mapping)
+    ratings['movie_idx'] = ratings['movie_id'].map(movie_mapping)
+
+    num_users = len(user_mapping)
+    num_movies = len(movie_mapping)
+
+    print(f"重新映射后: {num_users} 个用户, {num_movies} 部电影")
+
+    return ratings, num_users, num_movies
+</pre>
+
+- 先对读出数据集的信息，主要是读取评分数据
 
 ### 4.3 对lightgcn修改数据集后的的训练结果
 
