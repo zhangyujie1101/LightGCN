@@ -639,8 +639,6 @@ neg_edge_label_index = torch.stack([
 
 ![lgn_vs_gcn](./image/lgn_vs_gcn.png)
 
-GCN过拟合
-
 ## 4.数据集换成Movielens，同时训练集：验证集：测试集为8:1:1，可视化训练效果。
 
 ### 4.1 Movielens数据集介绍
