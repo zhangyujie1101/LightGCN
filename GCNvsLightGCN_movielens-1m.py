@@ -140,14 +140,14 @@ class GCNRecommender(nn.Module):
         return -torch.log(torch.sigmoid(pos_score - neg_score) + 1e-15).mean()
 
 
-# ===================== 公共训练与测试函数 =====================
-def train_one_epoch(model, optimizer, train_loader, edge_index, train_edge_label_index, num_users, num_movies):
+# ===================== 训练与测试函数 =====================
+def train(model, optimizer, train_loader, edge_index, train_edge_label_index, num_users, num_movies):
     total_loss = total_examples = 0
     model.train()
 
     for index in tqdm(train_loader, leave=False):
-        pos_edge_label_index = train_edge_label_index[:, index]
-        neg_edge_label_index = torch.stack([
+        pos_edge_label_index = train_edge_label_index[:, index] # 取正样本
+        neg_edge_label_index = torch.stack([ # 随机生成负样本
             pos_edge_label_index[0],
             torch.randint(num_users, num_users + num_movies,
                           (index.numel(),), device=device)
@@ -156,7 +156,7 @@ def train_one_epoch(model, optimizer, train_loader, edge_index, train_edge_label
 
         optimizer.zero_grad()
         emb = model.get_embedding(edge_index)
-        pos_rank, neg_rank = (emb[edge_label_index[0]] * emb[edge_label_index[1]]).sum(dim=-1).chunk(2)
+        pos_rank, neg_rank = (emb[edge_label_index[0]] * emb[edge_label_index[1]]).sum(dim=-1).chunk(2) # 计算正负样本得分
         loss = model.recommendation_loss(pos_rank, neg_rank)
         loss.backward()
         optimizer.step()
@@ -231,7 +231,7 @@ def run_experiment(model_class, name, epochs=100, lr=0.001):
 
     for epoch in range(1, epochs + 1):
         # 训练
-        loss = train_one_epoch(model, optimizer, train_loader, data.edge_index,
+        loss = train(model, optimizer, train_loader, data.edge_index,
                                train_edge_label_index, num_users, num_movies)
 
         # 在验证集上测试

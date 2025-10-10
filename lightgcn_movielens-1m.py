@@ -4,6 +4,7 @@ import torch
 import pandas as pd
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
+import torch.nn.functional as F
 
 # 导入PyG库
 from torch_geometric.data import Data
@@ -136,6 +137,8 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 
 # ===================== 训练函数 =====================
+'''
+# BPR损失
 def train():
     total_loss = total_examples = 0
 
@@ -169,7 +172,90 @@ def train():
         total_examples += pos_rank.numel()
 
     return total_loss / total_examples
+'''
 
+'''
+# MSE损失
+def train():
+    total_loss = total_examples = 0
+    model.train()
+
+    for index in tqdm(train_loader):
+        # 采样正样本边
+        pos_edge_label_index = train_edge_label_index[:, index]
+
+        # 提取这些正样本对应的评分（注意此时我们有评分信息）
+        ratings_batch = torch.tensor(
+            train_df.iloc[index]['rating'].values, dtype=torch.float32, device=device
+        )
+
+        optimizer.zero_grad()
+
+        # 获取节点embedding
+        emb = model.get_embedding(data.edge_index)
+
+        # 计算每个用户-物品对的预测分数（点积）
+        pred_ratings = (emb[pos_edge_label_index[0]] * emb[pos_edge_label_index[1]]).sum(dim=-1)
+
+        # === 计算L2范数损失（即MSE损失） ===
+        loss = torch.mean((pred_ratings - ratings_batch) ** 2)
+
+        loss.backward()
+        optimizer.step()
+
+        total_loss += float(loss) * len(index)
+        total_examples += len(index)
+
+    return total_loss / total_examples
+'''
+
+
+# BCE损失
+def train():
+    total_loss = total_examples = 0
+    model.train()
+
+    for index in tqdm(train_loader):
+        # 采样正样本边（用户-物品对）
+        pos_edge_label_index = train_edge_label_index[:, index]
+
+        # 生成负样本边（用户-随机物品对）
+        neg_edge_label_index = torch.stack([
+            pos_edge_label_index[0],
+            torch.randint(num_users, num_users + num_movies,
+                          (index.numel(),), device=device)
+        ], dim=0)
+
+        # 合并正负样本
+        edge_label_index = torch.cat([
+            pos_edge_label_index,
+            neg_edge_label_index
+        ], dim=1)
+
+        # 创建标签：正样本=1，负样本=0
+        edge_label = torch.cat([
+            torch.ones(pos_edge_label_index.size(1), device=device),
+            torch.zeros(neg_edge_label_index.size(1), device=device)
+        ])
+
+        optimizer.zero_grad()
+
+        # 获取节点embedding
+        emb = model.get_embedding(data.edge_index)
+
+        # 计算预测得分（点积作为交互概率的近似）
+        pred = (emb[edge_label_index[0]] * emb[edge_label_index[1]]).sum(dim=-1)
+
+        # 使用Sigmoid激活，再计算二元交叉熵损失
+        loss = F.binary_cross_entropy_with_logits(pred, edge_label)
+
+        loss.backward()
+        optimizer.step()
+
+        total_loss += float(loss) * len(index)
+        total_examples += len(index)
+
+    return total_loss / total_examples
 
 # ===================== 测试函数 =====================
 @torch.no_grad()
@@ -285,5 +371,5 @@ plt.title('Test Metrics')
 plt.legend()
 
 plt.tight_layout()
-plt.savefig("movielens_training_metrics.png", dpi=300, bbox_inches='tight')
+plt.savefig("training_metrics.png", dpi=300, bbox_inches='tight')
 plt.close()

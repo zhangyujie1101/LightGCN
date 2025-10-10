@@ -729,4 +729,4 @@ def load_data(data_path):
 
 ### 4.3 对lightgcn修改数据集后的的训练结果
 
-![lightgcn_movielens-1m](./image/lightgcn_movielens-1m.png)
+![lightgcn_movielens-1m](image/lightgcn_movielens-1m_BPR.png)
