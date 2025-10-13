@@ -137,7 +137,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 
 # ===================== 训练函数 =====================
-'''
+
 # BPR损失
 def train():
     total_loss = total_examples = 0
@@ -172,7 +172,7 @@ def train():
         total_examples += pos_rank.numel()
 
     return total_loss / total_examples
-'''
+
 
 '''
 # MSE损失
@@ -209,7 +209,7 @@ def train():
     return total_loss / total_examples
 '''
 
-
+'''
 # BCE损失
 def train():
     total_loss = total_examples = 0
@@ -256,6 +256,7 @@ def train():
         total_examples += len(index)
 
     return total_loss / total_examples
+'''
 
 # ===================== 测试函数 =====================
 @torch.no_grad()
@@ -308,7 +309,6 @@ def test(edge_label_index, k: int):
         total_examples += int((node_count > 0).sum())
 
     return precision / total_examples, recall / total_examples
-
 
 # ===================== 训练循环 =====================
 for epoch in range(1, 101):
