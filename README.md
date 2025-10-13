@@ -639,7 +639,7 @@ neg_edge_label_index = torch.stack([
 
 ![lgn_vs_gcn](./image/lgn_vs_gcn.png)
 
-## 4.数据集换成Movielens，同时训练集：验证集：测试集为8:1:1，可视化训练效果。
+## 4. 数据集换成Movielens，同时训练集：验证集：测试集为8:1:1，可视化训练效果。
 
 ### 4.1 Movielens数据集介绍
 
@@ -680,53 +680,46 @@ movies.dat文件存放的是电影的相关信息，该文件中每条记录形�
 
 <pre>MovieID::Title::Genres </pre>即电影id、电影标题、电影类型。
 
-### 4.2 lightgcn修改数据集时的注意点
+### 4.2 运行lightgcn_movielens-1m.py
 
-#### 4.2.1 加载MovieLens-1M数据集
-
-<pre>
-def load_data(data_path):
-    """
-    加载MovieLens-1M数据集并转换为PyG图数据格式
-    """
-    # 读取评分数据
-    ratings = pd.read_csv(osp.join(data_path, 'ratings.dat'),
-                          sep='::',
-                          engine='python',
-                          names=['user_id', 'movie_id', 'rating', 'timestamp'])
-
-    # 读取电影数据
-    movies = pd.read_csv(osp.join(data_path, 'movies.dat'),
-                         sep='::',
-                         engine='python',
-                         names=['movie_id', 'title', 'genres'],
-                         encoding='latin-1')
-
-    # 读取用户数据
-    users = pd.read_csv(osp.join(data_path, 'users.dat'),
-                        sep='::',
-                        engine='python',
-                        names=['user_id', 'gender', 'age', 'occupation', 'zipcode'])
-
-    print(f"数据集统计: {len(ratings)} 条评分, {len(users)} 个用户, {len(movies)} 部电影")
-
-    # 重新映射用户和电影ID为连续整数
-    user_mapping = {orig: new for new, orig in enumerate(ratings['user_id'].unique())}
-    movie_mapping = {orig: new for new, orig in enumerate(ratings['movie_id'].unique())}
-
-    ratings['user_idx'] = ratings['user_id'].map(user_mapping)
-    ratings['movie_idx'] = ratings['movie_id'].map(movie_mapping)
-
-    num_users = len(user_mapping)
-    num_movies = len(movie_mapping)
-
-    print(f"重新映射后: {num_users} 个用户, {num_movies} 部电影")
-
-    return ratings, num_users, num_movies
-</pre>
-
-- 先对读出数据集的信息，主要是读取评分数据，
-
-### 4.3 对lightgcn修改数据集后的的训练结果
+### 4.3 可视化训练结果
 
 ![lightgcn_movielens-1m](image/lightgcn_movielens-1m_BPR.png)
+
+### 4.4 修改GCNvsLightGCN.py数据集,得到GCNvsLightGCN_movielens-1m.py并运行
+
+![GCNvsLightGCN_movielens-1m](image/lgn_vs_gcn_movielens-1m.png)
+
+## 5. 寻找其他可以训练推荐系统的损失函数，例如L2范数，对比BPR损失，哪个损失训练效果更好，为什么有些损失函数无法训练高效的推荐模型。
+
+提示：BPR是排名损失，存在正对与负对，但是L2不需要负对，反而需要评分信息。如果觉得训练太慢可以换小一点的数据集。
+
+### 5.1 损失函数为BPR损失
+
+运行lightgcn_movielens-1m.py，得到结果
+
+![lightgcn_movielens-1m](image/lightgcn_movielens-1m_BPR.png)
+
+### 5.2 损失函数为MSE损失
+
+![lightgcn_movielens-1m](image/lightgcn_movielens-1m_MSE.png)
+
+训练损失：模型在拟合评分值上表现良好，训练收敛正常；
+
+验证集/测试集的精确率/召回率：MSE 损失优化的是评分预测误差，而 Precision@20 是排序指标，两者目标不一致。模型学会了预测评分值，但不一定能让正样本（喜欢的电影）排到前面。后期小幅回升可能是因为嵌入空间逐渐平滑化，使得用户偏好关系有一定恢复。
+
+### 5.2 损失函数为BCE损失
+
+![lightgcn_movielens-1m](image/lightgcn_movielens-1m_BCE.png)
+
+BCE和MSE不同，BCE是去优化“是否喜欢”的概率，而不是像MSE一样去拟合评分数值
+
+## 6. 使用MLP搭建传统双塔推荐模型，然后使用表格记录LGN与该双塔变体模型的实验结果，实验指标请使用Recall@10、Pre@10与NDCG@10
+
+双塔模型（Two-Tower Model）是一种常用于推荐系统和信息检索的神经网络结构，它通过分别为用户和物品构建两套独立的特征编码网络（即“用户塔”和“物品塔”），将二者的特征映射到同一向量空间中，然后通过向量相似度（如点积或余弦相似度）衡量匹配程度。该模型的核心思想是独立学习用户和物品的表示，从而实现高效的相似度计算与大规模召回，常结合BPR或BCE损失进行训练。
+
+运行MLP_TwoTower.py，得到训练结果
+
+![MLP_twotower_metrics](./image/MLP_twotower_metrics.png)
+
+**将MLP和LGN做对比，运行MLPvsLGN_TwoTower.py**
