@@ -3,9 +3,9 @@ import os.path as osp
 import torch
 import torch.nn as nn
 import pandas as pd
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
 from torch_geometric.nn import LightGCN
 from torch_geometric.data import Data
 
@@ -106,7 +106,7 @@ class LightGCNModel(nn.Module):
         return emb[self.num_users:self.num_users + self.num_movies]
 
 # ===================== 公共函数：训练 & 测试 =====================
-def train_mlp(model, optimizer, train_df, num_movies, batch_size):
+def train_mlp(model, optimizer, train_df, num_movies, batch_size=8192):
     model.train()
     total_loss, total_examples = 0, 0
     loader = torch.utils.data.DataLoader(range(len(train_df)), shuffle=True, batch_size=batch_size)
@@ -130,16 +130,13 @@ def train_mlp(model, optimizer, train_df, num_movies, batch_size):
     return total_loss / total_examples
 
 
-def train_lightgcn(model, optimizer, train_df, edge_index, num_users, num_movies, batch_size):
+def train_lightgcn(model, optimizer, train_df, edge_index, num_users, num_movies, batch_size=8192):
     model.train()
     total_loss, total_examples = 0, 0
     mask = edge_index[0] < edge_index[1]
     train_edge_label_index = edge_index[:, mask]
     loader = torch.utils.data.DataLoader(range(train_edge_label_index.size(1)),
                                          shuffle=True, batch_size=batch_size)
-
-    with torch.no_grad():
-        emb = model.gcn.get_embedding(edge_index)
 
     for index in tqdm(loader, leave=False):
         pos_edge_label_index = train_edge_label_index[:, index]
@@ -149,10 +146,9 @@ def train_lightgcn(model, optimizer, train_df, edge_index, num_users, num_movies
         ], dim=0)
 
         optimizer.zero_grad()
-
+        emb = model.gcn.get_embedding(edge_index)
         pos_score = (emb[pos_edge_label_index[0]] * emb[pos_edge_label_index[1]]).sum(dim=-1)
         neg_score = (emb[neg_edge_label_index[0]] * emb[neg_edge_label_index[1]]).sum(dim=-1)
-
         loss = -torch.log(torch.sigmoid(pos_score - neg_score) + 1e-8).mean()
 
         loss.backward()
@@ -204,9 +200,6 @@ batch_size = 8192
 
 results = {}
 
-history = {"MLP": {"loss": [], "precision": [], "recall": [], "ndcg": []},
-           "LightGCN": {"loss": [], "precision": [], "recall": [], "ndcg": []}}
-
 # ----- 模型 1：MLP -----
 mlp_model = TwoTowerModel(num_users, num_movies).to(device)
 mlp_optimizer = torch.optim.Adam(mlp_model.parameters(), lr=1e-3)
@@ -214,13 +207,6 @@ print("\n Training TwoTower MLP Model...")
 for epoch in range(1, EPOCHS + 1):
     loss = train_mlp(mlp_model, mlp_optimizer, train_df, num_movies, batch_size)
     pre, rec, ndcg = test(val_df, train_df, mlp_model.get_user_embedding(), mlp_model.get_movie_embedding())
-
-    # 记录训练过程
-    history["MLP"]["loss"].append(loss)
-    history["MLP"]["precision"].append(pre)
-    history["MLP"]["recall"].append(rec)
-    history["MLP"]["ndcg"].append(ndcg)
-
     print(f"[MLP] Epoch {epoch:03d} | Loss={loss:.4f} | P@10={pre:.4f} | R@10={rec:.4f} | NDCG@10={ndcg:.4f}")
 
 results["MLP"] = (pre, rec, ndcg)
@@ -234,13 +220,6 @@ for epoch in range(1, EPOCHS + 1):
     user_emb = lgn_model.get_user_embedding(train_edge_index)
     movie_emb = lgn_model.get_movie_embedding(train_edge_index)
     pre, rec, ndcg = test(val_df, train_df, user_emb, movie_emb)
-
-    # 记录训练过程
-    history["LightGCN"]["loss"].append(loss)
-    history["LightGCN"]["precision"].append(pre)
-    history["LightGCN"]["recall"].append(rec)
-    history["LightGCN"]["ndcg"].append(ndcg)
-
     print(f"[LGN] Epoch {epoch:03d} | Loss={loss:.4f} | P@10={pre:.4f} | R@10={rec:.4f} | NDCG@10={ndcg:.4f}")
 
 results["LightGCN"] = (pre, rec, ndcg)
@@ -250,46 +229,3 @@ print("\n================ 最终评估结果对比 ================")
 for name, (p, r, n) in results.items():
     print(f"{name:10s} | Precision@10={p:.4f} | Recall@10={r:.4f} | NDCG@10={n:.4f}")
 print("===================================================")
-
-# ===================== 可视化训练曲线 =====================
-plt.figure(figsize=(14, 10))
-
-# ---- Loss 曲线 ----
-plt.subplot(2, 2, 1)
-plt.plot(history["MLP"]["loss"], label='MLP')
-plt.plot(history["LightGCN"]["loss"], label='LightGCN')
-plt.title("Training Loss (BPR)")
-plt.xlabel("Epoch")
-plt.ylabel("Loss")
-plt.legend()
-
-# ---- Precision ----
-plt.subplot(2, 2, 2)
-plt.plot(history["MLP"]["precision"], label='MLP')
-plt.plot(history["LightGCN"]["precision"], label='LightGCN')
-plt.title("Precision@10")
-plt.xlabel("Epoch")
-plt.ylabel("Precision")
-plt.legend()
-
-# ---- Recall ----
-plt.subplot(2, 2, 3)
-plt.plot(history["MLP"]["recall"], label='MLP')
-plt.plot(history["LightGCN"]["recall"], label='LightGCN')
-plt.title("Recall@10")
-plt.xlabel("Epoch")
-plt.ylabel("Recall")
-plt.legend()
-
-# ---- NDCG ----
-plt.subplot(2, 2, 4)
-plt.plot(history["MLP"]["ndcg"], label='MLP')
-plt.plot(history["LightGCN"]["ndcg"], label='LightGCN')
-plt.title("NDCG@10")
-plt.xlabel("Epoch")
-plt.ylabel("NDCG")
-plt.legend()
-
-plt.tight_layout()
-plt.savefig("MLPvsLGN_twotower_metrics.png", dpi=300, bbox_inches='tight')
-plt.show()
