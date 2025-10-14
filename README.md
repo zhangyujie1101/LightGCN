@@ -723,3 +723,5 @@ BCE和MSE不同，BCE是去优化“是否喜欢”的概率，而不是像MSE�
 ![MLP_twotower_metrics](./image/MLP_twotower_metrics.png)
 
 **将MLP和LGN做对比，运行MLPvsLGN_TwoTower.py**
+
+![MLP vs LGN](./image/lgnvsmlp.png)
