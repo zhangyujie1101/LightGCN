@@ -686,7 +686,7 @@ movies.dat文件存放的是电影的相关信息，该文件中每条记录形�
 
 ![lightgcn_movielens-1m](image/lightgcn_movielens-1m_BPR.png)
 
-### 4.4 修改GCNvsLightGCN.py数据集,得到GCNvsLightGCN_movielens-1m.py并运行
+### 4.4 修改GCNvsLightGCN.py数据集,运行GCNvsLightGCN_movielens-1m.py
 
 ![GCNvsLightGCN_movielens-1m](image/lgn_vs_gcn_movielens-1m.png)
 
