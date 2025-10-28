@@ -738,7 +738,15 @@ BCE和MSE不同，BCE是去优化“是否喜欢”的概率，而不是像MSE�
 
 提示：推荐系统中的中毒攻击也叫先令(shilling)攻击，本次实验只考虑用户方面的数据修改，不修改项目数据。
 
+**攻击预算**
+
+<pre>attack_user_fraction = 0.01      # 假用户占原始用户比例（攻击预算）
+filler_per_fake = 50             # 每个假用户打分的物品数量
+rating_value = 5.0               # 假评分（高评分）</pre>
+
 ### 9.1 RandomAttack
+
+从所有电影中随机挑选 filler items；若指定了 target_item（攻击目标电影），每隔一个假用户确保它包含在评分列表中；评分固定为高分。
 
 #### 9.1.1 攻击函数
 
@@ -772,6 +780,8 @@ BCE和MSE不同，BCE是去优化“是否喜欢”的概率，而不是像MSE�
 
 ### 9.2 AverageAttack
 
+每个假用户随机选取若干电影；对每部电影赋予“略高于平均分”的评分；若指定目标物品，保证部分假用户评分该物品。
+
 #### 9.2.1 攻击函数
 
 <pre>def AverageAttack(train_df, num_users, num_movies, num_fake_users, filler_size, rating_value=5.0, target_item=None):
@@ -801,6 +811,8 @@ BCE和MSE不同，BCE是去优化“是否喜欢”的概率，而不是像MSE�
 ![AverageAttack](./image/AverageAttack.png)
 
 ### 9.3 AoPAttack
+
+对物品进行排序得到热门物品集；取前 10% 热门电影；利用热门物品吸引模型注意；假用户对热门电影的高分会让模型误判这些物品与 fake 用户偏好相关；若目标物品加入其中，可借助热门物品的 embedding 将目标“绑带”推高；
 
 #### 9.3.1 攻击函数
 
