@@ -725,3 +725,115 @@ BCE和MSE不同，BCE是去优化“是否喜欢”的概率，而不是像MSE�
 **将MLP和LGN做对比，运行MLPvsLGN_TwoTower.py**
 
 ![MLP vs LGN](./image/lgnvsmlp.png)
+
+## 7. 传统双塔推荐模型指分别处理用户Embedding和项目Embedding后合并。考虑一种情况，使用LGN处理用户项目数据，作为一个塔，使用用户社交网络作为另一个塔，两塔数据通过聚合层聚合，聚合方法可以是拼接两塔数据再过MLP；可以是通过注意力机制加权聚合。
+
+提示：用户社交网络简化为如果两个用户之间有共同的交互项目，则他们之间存在一个连边。
+
+## 8. 实验6中效果与LGN存在一定差距，思考为什么会出现这种差距。
+
+提示：考虑LGN的底层原理
+
+## 9. 参考GCN任务中的攻击实验。在Movielens数据集中完成推荐系统中毒与逃逸攻击实验：启发式攻击请使用RandomAttack、AverageAttack、AoPAttack与BandwagonAttack；生成式攻击请使用RAPU。可视化攻击后的模型推荐指标变化。
+
+提示：推荐系统中的中毒攻击也叫先令(shilling)攻击，本次实验只考虑用户方面的数据修改，不修改项目数据。
+
+### 9.1 RandomAttack
+
+#### 9.1.1 攻击函数
+
+<pre>def RandomAttack(train_df, num_users, num_movies, num_fake_users, filler_size, rating_value=5.0, target_item=None):
+    """
+    为每个假用户随机选择 filler_size 个物品并赋固定高评分（rating_value）；
+    如果提供 target_item，会保证 target_item 出现在部分假用户的评分中（以增加攻击效果）。
+    返回新的 train_df, 新的 num_users（扩展后）·
+    """
+    fake_rows = []
+    start_idx = num_users
+    item_pool = list(range(num_movies))
+    for fu in range(num_fake_users):
+        u_idx = start_idx + fu
+        # 随机选取 filler items
+        items = random.sample(item_pool, k=min(filler_size, num_movies))
+        # 若指定 target_item，确保一部分假用户包含它
+        if target_item is not None and fu % 2 == 0 and target_item not in items:
+            # 替换第一个元素
+            items[0] = target_item
+        for it in items:
+            fake_rows.append({'user_idx': u_idx, 'movie_idx': int(it), 'rating': rating_value})
+    fake_df = pd.DataFrame(fake_rows)
+    new_train = pd.concat([train_df, fake_df], ignore_index=True)
+    new_num_users = num_users + num_fake_users
+    return new_train, new_num_users</pre>
+
+#### 9.1.2 攻击结果
+
+![RandomAttack](./image/RandomAttack.png)
+
+### 9.2 AverageAttack
+
+#### 9.2.1 攻击函数
+
+<pre>def AverageAttack(train_df, num_users, num_movies, num_fake_users, filler_size, rating_value=5.0, target_item=None):
+    """
+    对每个 item 计算均值评分，假用户对随机选的 items 赋予 item 的均值或调高的均值
+    """
+    avg_rating = train_df.groupby('movie_idx')['rating'].mean().to_dict()
+    fake_rows = []
+    start_idx = num_users
+    item_pool = list(range(num_movies))
+    for fu in range(num_fake_users):
+        u_idx = start_idx + fu
+        items = random.sample(item_pool, k=min(filler_size, num_movies))
+        if target_item is not None and fu % 2 == 0 and target_item not in items:
+            items[0] = target_item
+        for it in items:
+            r = avg_rating.get(it, 3.0)
+            # 将均值向上推到 rating_value（但不超过 rating_value）
+            r = min(r + 1.0, rating_value)
+            fake_rows.append({'user_idx': u_idx, 'movie_idx': int(it), 'rating': r})
+    fake_df = pd.DataFrame(fake_rows)
+    new_train = pd.concat([train_df, fake_df], ignore_index=True)
+    return new_train, num_users + num_fake_users</pre>
+
+#### 9.2.2 攻击结果
+
+![AverageAttack](./image/AverageAttack.png)
+
+### 9.3 AoPAttack
+
+#### 9.3.1 攻击函数
+
+<pre>def AoPAttack(train_df, num_users, num_movies, num_fake_users, filler_size, rating_value=5.0, target_item=None):
+    """
+    AoP (Average of Popularity) attack: 假用户优先给流行度高的物品高分（filler选择热门物品）
+    """
+    pop = train_df['movie_idx'].value_counts().to_dict()
+    # 将 items 按流行度排序并取前一部分作为热门池
+    popular_items = [int(x) for x, _ in sorted(pop.items(), key=lambda kv: -kv[1])]
+    if len(popular_items) == 0:
+        popular_items = list(range(num_movies))
+    fake_rows = []
+    start_idx = num_users
+    pop_pool = popular_items[:max(100, int(0.1 * num_movies))]  # 取前 10% 或至少 100
+    for fu in range(num_fake_users):
+        u_idx = start_idx + fu
+        # 选取部分热门物品作为 filler（尽量选热门）
+        items = random.sample(pop_pool, k=min(filler_size, len(pop_pool)))
+        if target_item is not None and target_item not in items and fu % 2 == 0:
+            items[0] = target_item
+        for it in items:
+            fake_rows.append({'user_idx': u_idx, 'movie_idx': int(it), 'rating': rating_value})
+    fake_df = pd.DataFrame(fake_rows)
+    new_train = pd.concat([train_df, fake_df], ignore_index=True)
+
+    print(f"[{attack_type}] 注入假用户数: {num_fake_users}, 训练集总数: {len(new_train)}")
+    print(new_train.tail(10))
+
+    return new_train, num_users + num_fake_users</pre>
+
+#### 9.3.2 攻击结果
+
+![AoPAttack](./image/AoPAttack1.png)
+
+![AoPAttack](./image/AoPAttack2.png)
