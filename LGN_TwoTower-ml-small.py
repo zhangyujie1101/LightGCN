@@ -32,7 +32,8 @@ def load_data(data_path):
                          engine='python',
                          names=['movie_id', 'title', 'genres'])
 
-    # 读取用户数据（如果需要的话）
+    # 读取用户数据
+
     # 由于 MovieLens Latest Small 数据集没有用户文件，我们可以忽略
     # 但我们仍然需要处理 user_id 和 movie_id 映射
     print(f"数据集统计: {len(ratings)} 条评分, {len(movies)} 部电影")

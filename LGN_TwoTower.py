@@ -293,7 +293,7 @@ for epoch in range(1, 101):
 
     # 在验证集上测试
     val_precision, val_recall = test(data.val_edge_label_index, k=20)
-    # 在测试集上测试（可选，通常只在最后测试）
+    # 在测试集上测试
     if epoch % 10 == 0:  # 每10个epoch在测试集上测试一次
         test_precision, test_recall = test(data.test_edge_label_index, k=20)
         test_precisions.append(test_precision)

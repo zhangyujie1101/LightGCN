@@ -7,7 +7,6 @@ Movielens Poisoning Attack Experiments
 """
 
 import os.path as osp
-import copy
 import random
 import numpy as np
 import torch
@@ -16,7 +15,6 @@ from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 from torch_geometric.data import Data
 from torch_geometric.nn import LightGCN
-import matplotlib.pyplot as plt
 
 # ============ 配置 ============
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -100,7 +98,7 @@ def init_model_and_optimizer(num_nodes):
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     return model, opt
 
-# BPR style training (使用 LightGCN 自带的 recommendation_loss 接口)
+# BPR style training
 def run_train(model, optimizer, data_obj, train_edge_label_index, train_loader, num_users):
     model.train()
     total_loss = total_examples = 0.0
@@ -173,7 +171,7 @@ def RandomAttack(train_df, num_users, num_movies, num_fake_users, filler_size, r
     """
     为每个假用户随机选择 filler_size 个物品并赋固定高评分（rating_value）；
     如果提供 target_item，会保证 target_item 出现在部分假用户的评分中（以增加攻击效果）。
-    返回新的 train_df, 新的 num_users（扩展后）
+    返回新的 train_df, 新的 num_users（扩展后）·
     """
     fake_rows = []
     start_idx = num_users
@@ -237,6 +235,10 @@ def AoPAttack(train_df, num_users, num_movies, num_fake_users, filler_size, rati
             fake_rows.append({'user_idx': u_idx, 'movie_idx': int(it), 'rating': rating_value})
     fake_df = pd.DataFrame(fake_rows)
     new_train = pd.concat([train_df, fake_df], ignore_index=True)
+
+    print(f"[{attack_type}] 注入假用户数: {num_fake_users}, 训练集总数: {len(new_train)}")
+    print(new_train.tail(10))
+
     return new_train, num_users + num_fake_users
 
 def BandwagonAttack(train_df, num_users, num_movies, num_fake_users, filler_size, rating_value=5.0, target_item=None):
@@ -363,75 +365,71 @@ def train_and_evaluate(train_df_in, val_df, test_df, num_users_in, num_movies, e
         'num_users': num_users_in
     }
 
+
+
+# ============ 攻击设置与执行 ============
+attack_choices = ['RandomAttack', 'AverageAttack', 'AoPAttack', 'BandwagonAttack', 'RAPU']
+attack_type = 'AoPAttack'
+
+num_fake = max(1, int(orig_num_users * attack_user_fraction))
+print(f"\n选择攻击形式: {attack_type}")
+print(f"注入假用户数: {num_fake} (原始用户数 {orig_num_users})")
+
+
+
 # ============ 运行基线训练 ============
 print("=== 训练基线模型（无攻击） ===")
 baseline_result = train_and_evaluate(train_df, val_df, test_df, orig_num_users, num_movies, epochs=num_epochs, do_print=True)
 
-# ============ 攻击设置与执行 ============
 attack_results = {}
-attack_names = ['RandomAttack', 'AverageAttack', 'AoPAttack', 'BandwagonAttack', 'RAPU']
-num_fake = max(1, int(orig_num_users * attack_user_fraction))
-print(f"每种攻击注入假用户数: {num_fake} (原始用户数 {orig_num_users})")
 
 # 1) RandomAttack
-print("=== 执行 RandomAttack ===")
-train_rnd, n_users_rnd = RandomAttack(train_df, orig_num_users, num_movies, num_fake, filler_per_fake, rating_value=5.0, target_item=target_item)
-attack_results['RandomAttack'] = train_and_evaluate(train_rnd, val_df, test_df, n_users_rnd, num_movies, epochs=num_epochs, do_print=True)
+if attack_type == 'RandomAttack':
+    print("=== 执行 RandomAttack ===")
+    train_mod, n_users_mod = RandomAttack(train_df, orig_num_users, num_movies, num_fake, filler_per_fake, rating_value=5.0, target_item=target_item)
 
 # 2) AverageAttack
-print("=== 执行 AverageAttack ===")
-train_avg, n_users_avg = AverageAttack(train_df, orig_num_users, num_movies, num_fake, filler_per_fake, rating_value=5.0, target_item=target_item)
-attack_results['AverageAttack'] = train_and_evaluate(train_avg, val_df, test_df, n_users_avg, num_movies, epochs=num_epochs, do_print=True)
+elif attack_type == 'AverageAttack':
+    print("=== 执行 AverageAttack ===")
+    train_mod, n_users_mod = AverageAttack(train_df, orig_num_users, num_movies, num_fake, filler_per_fake, rating_value=5.0, target_item=target_item)
 
 # 3) AoPAttack
-print("=== 执行 AoPAttack ===")
-train_aop, n_users_aop = AoPAttack(train_df, orig_num_users, num_movies, num_fake, filler_per_fake, rating_value=5.0, target_item=target_item)
-attack_results['AoPAttack'] = train_and_evaluate(train_aop, val_df, test_df, n_users_aop, num_movies, epochs=num_epochs, do_print=True)
+elif attack_type == 'AoPAttack':
+    print("=== 执行 AoPAttack ===")
+    train_mod, n_users_mod = AoPAttack(train_df, orig_num_users, num_movies, num_fake, filler_per_fake, rating_value=5.0, target_item=target_item)
 
 # 4) BandwagonAttack
-print("=== 执行 BandwagonAttack ===")
-train_band, n_users_band = BandwagonAttack(train_df, orig_num_users, num_movies, num_fake, filler_per_fake, rating_value=5.0, target_item=target_item)
-attack_results['BandwagonAttack'] = train_and_evaluate(train_band, val_df, test_df, n_users_band, num_movies, epochs=num_epochs, do_print=True)
+elif attack_type == 'BandwagonAttack':
+    print("=== 执行 BandwagonAttack ===")
+    train_mod, n_users_mod = BandwagonAttack(train_df, orig_num_users, num_movies, num_fake, filler_per_fake, rating_value=5.0, target_item=target_item)
 
 # 5) RAPU (生成式近似) - 基于基线模型的 item embedding 生成假用户
-print("=== 执行 RAPU (生成式近似) ===")
-# 使用 baseline_result 的 model 作为 generator
-gen_model = baseline_result['model']
-gen_data_obj = baseline_result['data_obj']
-train_rapu, n_users_rapu = RAPU_Attack(train_df, orig_num_users, num_movies, num_fake, filler_per_fake,
-                                       model_for_gen=gen_model, data_obj=gen_data_obj,
-                                       rating_value=5.0, target_item=target_item)
-attack_results['RAPU'] = train_and_evaluate(train_rapu, val_df, test_df, n_users_rapu, num_movies, epochs=num_epochs, do_print=True)
+elif attack_type == 'RAPU':
+    print("=== 执行 RAPU (生成式近似) ===")
+    gen_model = baseline_result['model']
+    gen_data_obj = baseline_result['data_obj']
+    train_mod, n_users_mod = RAPU_Attack(train_df, orig_num_users, num_movies, num_fake, filler_per_fake,
+                                         model_for_gen=gen_model, data_obj=gen_data_obj,
+                                         rating_value=5.0, target_item=target_item)
+else:
+    raise ValueError(f"未知攻击类型: {attack_type}")
 
-# ============ 可视化比较 ============
-# 收集指标
-labels = ['Baseline'] + attack_names
-val_precisions = [baseline_result['val_prec']] + [attack_results[name]['val_prec'] for name in attack_names]
-val_recalls = [baseline_result['val_rec']] + [attack_results[name]['val_rec'] for name in attack_names]
-test_precisions = [baseline_result['test_prec']] + [attack_results[name]['test_prec'] for name in attack_names]
-test_recalls = [baseline_result['test_rec']] + [attack_results[name]['test_rec'] for name in attack_names]
+attack_result = train_and_evaluate(train_mod, val_df, test_df, n_users_mod, num_movies, epochs=num_epochs, do_print=True)
+print(f"原始用户数: {orig_num_users}, 新用户数: {n_users_mod}")
 
-x = np.arange(len(labels))
-width = 0.2
+# ===================== 输出攻击结果 =====================
+print("\n====================== 实验结果汇总 ======================")
 
-plt.figure(figsize=(14, 6))
-plt.subplot(1, 2, 1)
-plt.bar(x - 1.5*width, val_precisions, width, label='Val Precision@20')
-plt.bar(x - 0.5*width, val_recalls, width, label='Val Recall@20')
-plt.xticks(x, labels, rotation=30)
-plt.ylabel('Score')
-plt.title('Validation Metrics Comparison')
-plt.legend()
+print("\n--- 基线模型（无攻击） ---")
+print(f"Val Precision@20: {baseline_result['val_prec']:.4f}")
+print(f"Val Recall@20:    {baseline_result['val_rec']:.4f}")
+print(f"Test Precision@20: {baseline_result['test_prec']:.4f}")
+print(f"Test Recall@20:    {baseline_result['test_rec']:.4f}")
 
-plt.subplot(1, 2, 2)
-plt.bar(x - 1.5*width, test_precisions, width, label='Test Precision@20')
-plt.bar(x - 0.5*width, test_recalls, width, label='Test Recall@20')
-plt.xticks(x, labels, rotation=30)
-plt.ylabel('Score')
-plt.title('Test Metrics Comparison')
-plt.legend()
+print(f"\n--- 攻击形式: {attack_type} ---")
+print(f"Val Precision@20: {attack_result['val_prec']:.4f}")
+print(f"Val Recall@20:    {attack_result['val_rec']:.4f}")
+print(f"Test Precision@20: {attack_result['test_prec']:.4f}")
+print(f"Test Recall@20:    {attack_result['test_rec']:.4f}")
 
-plt.tight_layout()
-plt.savefig('attack_comparison_metrics.png', dpi=300, bbox_inches='tight')
-print("已保存比较图: attack_comparison_metrics.png")
-plt.show()
+print("\n==========================================================\n")
