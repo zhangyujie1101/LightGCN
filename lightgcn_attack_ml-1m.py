@@ -369,7 +369,7 @@ def train_and_evaluate(train_df_in, val_df, test_df, num_users_in, num_movies, e
 
 # ============ 攻击设置与执行 ============
 attack_choices = ['RandomAttack', 'AverageAttack', 'AoPAttack', 'BandwagonAttack', 'RAPU']
-attack_type = 'AoPAttack'
+attack_type = 'RAPU'
 
 num_fake = max(1, int(orig_num_users * attack_user_fraction))
 print(f"\n选择攻击形式: {attack_type}")

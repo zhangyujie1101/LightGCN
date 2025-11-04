@@ -849,3 +849,47 @@ rating_value = 5.0               # 假评分（高评分）</pre>
 ![AoPAttack](./image/AoPAttack1.png)
 
 ![AoPAttack](./image/AoPAttack2.png)
+
+### 9.4 BandwagonAttack（搭便车攻击）
+
+注入 1% 假用户；每个假用户评分 50 个物品；其中：约 20% 是热门物品；其余随机；所有假用户都包含目标物品。
+
+属于 典型“推送型攻击”；假用户通过“热门 + 目标物品”的共现关系，让模型学到：“喜欢热门电影的人也喜欢目标电影”；
+
+#### 9.4.1 攻击函数
+
+<pre>def BandwagonAttack(train_df, num_users, num_movies, num_fake_users, filler_size, rating_value=5.0, target_item=None):
+    """
+    Bandwagon：部分填充热门物品（吸引模型），并在每个假用户中加入 target_item（若给定），其他 position 随机
+    """
+    pop = train_df['movie_idx'].value_counts().to_dict()
+    popular_items = [int(x) for x, _ in sorted(pop.items(), key=lambda kv: -kv[1])]
+    if len(popular_items) == 0:
+        popular_items = list(range(num_movies))
+    pop_pool = popular_items[:max(50, int(0.05 * num_movies))]
+    fake_rows = []
+    start_idx = num_users
+    for fu in range(num_fake_users):
+        u_idx = start_idx + fu
+        items = []
+        # 保证部分热门
+        num_pop_fill = max(1, int(0.2 * filler_size))
+        if len(pop_pool) >= num_pop_fill:
+            items += random.sample(pop_pool, k=num_pop_fill)
+        # 其余随机选
+        remaining = max(0, filler_size - len(items))
+        other_pool = [i for i in range(num_movies) if i not in items]
+        if remaining > 0 and len(other_pool) > 0:
+            items += random.sample(other_pool, k=min(remaining, len(other_pool)))
+        # 插入 target_item
+        if target_item is not None and target_item not in items:
+            items[0] = target_item
+        for it in items:
+            fake_rows.append({'user_idx': u_idx, 'movie_idx': int(it), 'rating': rating_value})
+    fake_df = pd.DataFrame(fake_rows)
+    new_train = pd.concat([train_df, fake_df], ignore_index=True)
+    return new_train, num_users + num_fake_users</pre>
+
+#### 9.4.2 攻击结果
+
+![BandwagonAttack](./image/BandwagonAttack.png)
