@@ -893,3 +893,70 @@ rating_value = 5.0               # 假评分（高评分）</pre>
 #### 9.4.2 攻击结果
 
 ![BandwagonAttack](./image/BandwagonAttack.png)
+
+### 9.5 RAPU（生成式近似攻击）
+
+假用户的评分集中在与目标物品 embedding 相似的物品；若无目标物品，则选“热门中心 item”及其相似群组；模拟“生成式高质量伪造评分”。
+
+#### 9.5.1 攻击函数
+
+<pre>def RAPU_Attack(train_df, num_users, num_movies, num_fake_users, filler_size, model_for_gen, data_obj, num_epochs_inner=3, rating_value=5.0, target_item=None):
+    """
+    RAPU 生成式简化近似实现（实用版）:
+    - 使用给定的 model_for_gen（LightGCN 已训练或初步训练过）来提取 item embedding
+    - 对于每个假用户，如果提供 target_item，则优先把 target_item 标成高分
+    - 其余 filler 选取与 target_item 相似（embedding 相似）或总体热门/相似的 item，并打高分
+    说明：这不是学术上严格的 RAPU（原论文用生成模型），但能模拟“生成式高质量伪造评分”的效果
+    """
+    # 获取 item embeddings
+    model_for_gen.eval()
+    with torch.no_grad():
+        emb = model_for_gen.get_embedding(data_obj.edge_index).cpu()
+    item_emb = emb[num_users:num_users + num_movies].numpy()  # shape (num_movies, dim)
+
+    # 计算 pairwise 相似度（cos）
+    norm = np.linalg.norm(item_emb, axis=1, keepdims=True) + 1e-9
+    item_emb_norm = item_emb / norm
+    sim_matrix = item_emb_norm @ item_emb_norm.T  # num_movies x num_movies
+
+    fake_rows = []
+    start_idx = num_users
+    all_items = list(range(num_movies))
+    for fu in range(num_fake_users):
+        u_idx = start_idx + fu
+        items = []
+        if target_item is not None:
+            items.append(target_item)
+            # 选相似性最高的若干 items（不包含自己）
+            sim_scores = sim_matrix[target_item]
+            top_sim_idx = np.argsort(-sim_scores)
+            cnt = min(filler_size - 1, len(top_sim_idx) - 1)
+            i = 0
+            while len(items) < filler_size and i < len(top_sim_idx):
+                cand = int(top_sim_idx[i])
+                if cand != target_item and cand not in items:
+                    items.append(cand)
+                i += 1
+        else:
+            # 若无显式 target_item，则为假用户从热门+相似中心采样一些高相似群组
+            # 选一个中心 item（热门或随机）
+            pop = train_df['movie_idx'].value_counts()
+            center = int(pop.idxmax()) if not pop.empty else random.choice(all_items)
+            items.append(center)
+            sim_scores = sim_matrix[center]
+            top_sim_idx = np.argsort(-sim_scores)
+            i = 0
+            while len(items) < filler_size and i < len(top_sim_idx):
+                cand = int(top_sim_idx[i])
+                if cand != center and cand not in items:
+                    items.append(cand)
+                i += 1
+        for it in items:
+            fake_rows.append({'user_idx': u_idx, 'movie_idx': int(it), 'rating': rating_value})
+    fake_df = pd.DataFrame(fake_rows)
+    new_train = pd.concat([train_df, fake_df], ignore_index=True)
+    return new_train, num_users + num_fake_users</pre>
+
+#### 9.4.2 攻击结果
+
+![RAPUAttack](./image/RAPU.png)
