@@ -957,6 +957,6 @@ rating_value = 5.0               # 假评分（高评分）</pre>
     new_train = pd.concat([train_df, fake_df], ignore_index=True)
     return new_train, num_users + num_fake_users</pre>
 
-#### 9.4.2 攻击结果
+#### 9.5.2 攻击结果
 
 ![RAPUAttack](./image/RAPU.png)
